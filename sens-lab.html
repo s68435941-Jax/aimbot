@@ -1,0 +1,924 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPS 靈敏度校準室</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: 左側設定與換算面板，右側 16:9 模擬靶場；下方為分析圖表與回合紀錄。單一深色「靶場」風格，琥珀色為唯一強調色。 */
+:root{
+  --bg:#111419; --panel:#181c23; --panel-2:#1f242d; --line:#2b323d;
+  --fg:#e7eaef; --muted:#8c96a4; --accent:#f0a23b; --accent-ink:#1a1206;
+  --good:#5cbf8b; --bad:#e2685a; --info:#72a7d8;
+  --f-display:"Chakra Petch","Noto Sans TC",system-ui,sans-serif;
+  --f-body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-body);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px}
+.wrap{max-width:1280px;margin:0 auto;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;border-bottom:1px solid var(--line);padding-bottom:14px}
+h1{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:.02em;margin:0;text-wrap:balance}
+h1 span{color:var(--accent)}
+header p{margin:0;color:var(--muted);max-width:60ch}
+h2{font-family:var(--f-display);font-weight:600;font-size:13px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);margin:0}
+.app{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:920px){.app{grid-template-columns:minmax(0,1fr)}}
+.side{display:grid;gap:16px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;display:grid;gap:12px;min-width:0}
+label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+input[type=number]{font-family:var(--f-mono);font-size:18px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%}
+select{font-family:var(--f-body);font-size:15px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%}
+select:focus{outline:2px solid var(--accent);outline-offset:1px}
+.gtable td:first-child{font-family:var(--f-body)}
+.gtable tr.sel td{color:var(--accent)}
+.gtable th,.gtable td{padding:6px 6px}
+input[type=number]:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.readout{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.readout div{background:var(--panel-2);border-radius:4px;padding:8px}
+.readout b{display:block;font-family:var(--f-mono);font-size:16px;font-variant-numeric:tabular-nums;color:var(--fg)}
+.readout small{font-size:11px;color:var(--muted);letter-spacing:.04em}
+.btns{display:grid;gap:8px}
+button{font-family:var(--f-display);font-weight:600;font-size:14px;letter-spacing:.04em;border-radius:4px;padding:10px 12px;cursor:pointer;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px}
+button:hover:not(:disabled){border-color:var(--accent)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button .tag{font-family:var(--f-mono);font-size:11px;font-weight:400;opacity:.75}
+.status-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-family:var(--f-mono);padding:2px 8px;border-radius:999px;background:var(--panel-2);color:var(--muted)}
+.status-chip i{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.status-chip.ok i{background:var(--good)} .status-chip.warn i{background:var(--accent)}
+
+.stage-col{display:grid;gap:10px;min-width:0}
+.stage{position:relative;width:100%;aspect-ratio:16/9;max-width:100%;background:#0b0d11;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.stage:fullscreen{border:0;border-radius:0;aspect-ratio:auto;width:100vw;height:100vh}
+canvas{display:block;width:100%;height:100%;cursor:crosshair}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(11,13,17,.72);text-align:center;padding:24px}
+.overlay div{display:grid;gap:8px;max-width:46ch}
+.overlay strong{font-family:var(--f-display);font-size:22px;color:var(--fg)}
+.overlay p{margin:0;color:var(--muted)}
+.padrow{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--panel-2);border-radius:4px;padding:8px}
+.padrow small{display:block;font-size:11px;color:var(--muted);letter-spacing:.04em}
+.padrow span{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.padrow button{padding:6px 10px;font-size:12px}
+.ov-btns{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px}
+.ov-btns button{min-width:150px}
+.stage-bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}
+.stage-bar button{padding:6px 10px;font-size:12px}
+
+.results{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:1100px){.results{grid-template-columns:minmax(0,1fr)}}
+.verdict .big{font-family:var(--f-mono);font-size:44px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.verdict .delta{font-family:var(--f-mono);font-size:14px}
+.verdict .delta.up{color:var(--info)} .verdict .delta.down{color:var(--bad)} .verdict .delta.flat{color:var(--good)}
+.verdict p{margin:0}
+.cmd{display:flex;gap:8px;align-items:stretch}
+.cmd code{flex:1;min-width:0;font-family:var(--f-mono);background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:8px 10px;overflow-x:auto;white-space:nowrap;user-select:all}
+.cmd button{padding:6px 12px;font-size:12px}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;font-size:13px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font-family:var(--f-mono);font-size:10px}
+.chart .grid{stroke:var(--line);stroke-width:1}
+.chart .ref{stroke:var(--muted);stroke-dasharray:3 3}
+.chart .band{fill:var(--good);opacity:.12}
+.chart .hit{fill:var(--good)} .chart .miss{fill:var(--bad)}
+.chart .err{fill:none;stroke:var(--accent);stroke-width:1.5}
+.chart .thr{stroke:var(--good);stroke-dasharray:4 3}
+.empty{color:var(--muted);font-size:13px;margin:0}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-weight:500;color:var(--muted);font-size:12px}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.method{color:var(--muted);font-size:13px;display:grid;gap:6px}
+.method p{margin:0;max-width:75ch}
+.method b{color:var(--fg);font-weight:500}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>FPS 靈敏度<span>校準室</span></h1>
+    <p>輸入滑鼠 DPI 與遊戲靈敏度，在角度換算與遊戲一致的靶場做甩槍與追蹤測試，算出 CS2、WARDOGS 等遊戲的建議值。</p>
+  </header>
+
+  <div class="app">
+    <aside class="side">
+      <section class="box" aria-labelledby="h-setup">
+        <h2 id="h-setup">設定</h2>
+        <label for="dpi">滑鼠 DPI
+          <input id="dpi" type="number" min="100" max="32000" step="50" value="800">
+        </label>
+        <label for="game">目前主要玩的遊戲
+          <select id="game"></select>
+        </label>
+        <label for="sens"><span id="sensLabel">CS2 目前靈敏度（選填）</span>
+          <input id="sens" type="number" min="0.001" max="100" step="0.01" placeholder="例如 1.25">
+        </label>
+        <p class="hint" id="sensHint"></p>
+        <div class="readout">
+          <div><small>eDPI</small><b id="rEdpi">–</b></div>
+          <div><small>cm/360°</small><b id="rCm">–</b></div>
+          <div><small>°/count</small><b id="rDeg">–</b></div>
+        </div>
+        <div class="padrow">
+          <div><small>滑鼠墊可用範圍</small><span id="padInfo">尚未測量</span></div>
+          <button type="button" id="btnPad">測量</button>
+        </div>
+      </section>
+
+      <section class="box" aria-labelledby="h-test">
+        <h2 id="h-test">測試</h2>
+        <div class="btns">
+          <button id="btnFlick" class="primary">1 · 甩槍測試<span class="tag">30 個（前 5 個熱身）</span></button>
+          <button id="btnTrack">2 · 追蹤測試<span class="tag">20 秒</span></button>
+        </div>
+        <p class="hint">兩項都做結果最準。按 Esc 可暫停。測試時請用平常打遊戲的姿勢與滑鼠墊。</p>
+        <span class="status-chip" id="rawChip"><i></i><span>尚未鎖定滑鼠</span></span>
+      </section>
+    </aside>
+
+    <div class="stage-col">
+      <div class="stage" id="stage">
+        <canvas id="cv" aria-label="模擬靶場"></canvas>
+        <div class="overlay" id="overlay">
+          <div>
+            <strong id="ovTitle">準備就緒</strong>
+            <p id="ovText">選擇下方測試開始，或直接按鍵盤 1／2。滑鼠會被鎖定在畫面中，移動方式與遊戲相同。</p>
+            <div class="ov-btns" id="ovBtns">
+              <button type="button" id="ovFlick" class="primary">甩槍測試<span class="tag">按 1</span></button>
+              <button type="button" id="ovTrack">追蹤測試<span class="tag">按 2</span></button>
+              <button type="button" id="ovPad">測量滑鼠墊<span class="tag">按 3</span></button>
+              <button type="button" id="ovResume" class="primary" hidden>繼續<span class="tag">按空白鍵</span></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="stage-bar">
+        <span id="stageInfo">視野 CS2 預設（16:9 水平 106.26°）</span>
+        <button id="btnFs" type="button">全螢幕</button>
+      </div>
+    </div>
+  </div>
+
+  <section class="results" aria-label="分析結果">
+    <div class="box verdict" id="verdictBox">
+      <h2>建議靈敏度</h2>
+      <div id="verdict"><p class="empty">完成至少一項測試後，這裡會顯示建議值、對應的 eDPI 與 cm/360，以及可直接貼到 CS2 主控台的指令。</p></div>
+    </div>
+    <div class="box">
+      <h2>甩槍：落點與修正</h2>
+      <div id="flickOut"><p class="empty">每個點是一次甩槍。縱軸是第一段快速移動停下時走了目標距離的幾成，1.0 代表剛好到位；綠色帶 0.88–0.98 是一般理想範圍。</p></div>
+    </div>
+    <div class="box">
+      <h2>追蹤：誤差隨時間</h2>
+      <div id="trackOut"><p class="empty">準星與移動目標的角度誤差曲線。速度增益大於 1 表示你經常跟過頭，小於 1 表示跟不上。</p></div>
+    </div>
+  </section>
+
+  <section class="box" aria-labelledby="h-hist">
+    <h2 id="h-hist">回合紀錄</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>回合</th><th>CS2 等效靈敏度</th><th>DPI</th><th>甩槍落點中位數</th><th>命中率</th><th>追蹤增益</th><th>貼靶率</th><th>建議值（CS2）</th></tr></thead>
+        <tbody id="hist"><tr><td colspan="8" style="text-align:left;font-family:var(--f-body);color:var(--muted)">尚無紀錄。套用建議值後再測一輪，數值會逐步收斂。</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="box method" aria-labelledby="h-method">
+    <h2 id="h-method">計算方式</h2>
+    <p><b>角度換算</b>：CS2 的 m_yaw 與 m_pitch 預設 0.022，所以轉動角度 = 滑鼠 count × 靈敏度 × 0.022°。cm/360 = 2.54 × 360 ÷ (DPI × 靈敏度 × 0.022)。本頁以相同公式驅動視角，並使用 CS2 的 Hor+ 視野。</p>
+    <p><b>甩槍</b>：記錄每次甩槍的軌跡，找出速度峰值後第一次減速到停下的位置（第一段彈道移動）。這段落點佔目標距離的比例若大於 1，代表手的力道配上這個靈敏度會甩過頭；明顯小於 0.88 代表需要大量修正。共 30 個目標，前 5 個為熱身不計分；其餘 25 個平均分配到近（&lt; 18°）、中（18–30°）、遠（≥ 30°）三種距離，落點取各距離中位數再等權合併。落點係數 = 0.93 ÷ 落點。</p>
+    <p><b>滑鼠墊範圍</b>：第一次甩槍前會量出從中心往左、往右可以移動的公分數。測試中累計手的位置，生成目標時若原方向會超出範圍（含 15% 甩過頭餘裕），就改往另一邊出現，距離分組不變。兩邊都放不下時會請你把滑鼠放回中間，這段時間不計入結果。</p>
+    <p><b>修正過程</b>：第一段停下後到點擊之間，分析沿目標方向的移動。修正時反向超過 0.3° 算一次「來回晃」，偏多代表靈敏度偏高、難以停住；不反向但分兩下以上補到位算「慢慢補」，偏多代表偏低。修正係數限制在 ±10%，甩槍係數 = 落點係數 70% + 修正係數 30%（幾何平均）。</p>
+    <p><b>追蹤</b>：比對準星與目標的水平角速度，先找出你的反應延遲，再算速度增益（準星速度 ÷ 目標速度）與抖動量。增益偏高或抖動大往下修，增益偏低且延遲長往上修。</p>
+    <p><b>跨遊戲換算</b>：以每個滑鼠 count 轉動的角度為準，讓各遊戲腰射轉一圈的距離相同。VALORANT 0.07°、Apex 0.022°、Overwatch 2 與 CoD 0.0066°、Marvel Rivals 0.0175°（每單位靈敏度每 count）。WARDOGS 的 0.1–2 線性對應每 count 0.007–0.07°。</p>
+    <p><b>合併</b>：兩項都有時甩槍佔 60%、追蹤佔 40%，單次調整幅度限制在 ±30%。這是依你本次手感推估的起點，建議套用後再測一輪並在實戰中確認。</p>
+    <p><b>注意</b>：Chrome 與 Edge 支援讀取未經系統加速的原始滑鼠位移。若狀態顯示「系統游標模式」，請關閉 Windows「增強指標準確度」並把指標速度保持在第 6 格，否則換算會失準。</p>
+  </section>
+</div>
+
+<script>
+(() => {
+const D2R = Math.PI / 180, YAW = 0.022;
+const VFOV = 73.7398; // CS2 16:9 下 hfov 106.26° 對應的垂直視野
+const TARGET_R = 1.6;  // 甩槍目標角半徑（度）
+const TRACK_R = 1.9;   // 追蹤判定角半徑
+const FLICK_N = 30, WARMUP = 5, TRACK_MS = 20000;
+const DBINS = [{ name:'近', a:0, b:18, label:'< 18°' }, { name:'中', a:18, b:30, label:'18–30°' }, { name:'遠', a:30, b:999, label:'≥ 30°' }];
+function makePlan(){
+  const p = [], rest = [];
+  for (let i = 0; i < WARMUP; i++) p.push(i % 3);
+  for (let i = 0; i < FLICK_N - WARMUP; i++) rest.push(i % 3);
+  for (let i = rest.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [rest[i], rest[j]] = [rest[j], rest[i]]; }
+  return p.concat(rest);
+}
+
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), stage = $('stage');
+const ov = $('overlay'), ovTitle = $('ovTitle'), ovText = $('ovText');
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+/* ---------- 設定 ---------- */
+const saved = store.get('senslab.cfg', null);
+if (saved){ if (saved.dpi) $('dpi').value = saved.dpi; if (saved.sens) $('sens').value = saved.sens; }
+let history = store.get('senslab.hist', []);
+let pad = store.get('senslab.pad', null); // { L, R } 公分，從中心往左／右的距離
+let cal = null, handX = 0;
+function renderPad(){
+  $('padInfo').textContent = pad ? `左 ${pad.L.toFixed(1)} cm · 右 ${pad.R.toFixed(1)} cm` : '尚未測量（甩槍前會先測）';
+  $('btnPad').textContent = pad ? '重新測量' : '測量';
+}
+renderPad();
+let round = null;
+
+/* 各遊戲換算：以「每個滑鼠 count 轉動的角度」為共同單位，腰射 360° 距離一致 */
+const GAMES = [
+  { id:'cs2',     name:'CS2',              yaw:.022,  dec:2 },
+  { id:'wardogs', name:'WARDOGS',          dec:2, min:.1, max:2, approx:true,
+    toDeg: s => 0.007 + (s - 0.1) * 0.063 / 1.9, fromDeg: d => 0.1 + (d - 0.007) * 1.9 / 0.063 },
+  { id:'val',     name:'VALORANT',         yaw:.07,   dec:3 },
+  { id:'apex',    name:'Apex Legends',     yaw:.022,  dec:2 },
+  { id:'ow2',     name:'Overwatch 2',      yaw:.0066, dec:2 },
+  { id:'cod',     name:'CoD（MWIII / BO6）', yaw:.0066, dec:2 },
+  { id:'rivals',  name:'Marvel Rivals',    yaw:.0175, dec:2 }
+];
+const gameById = id => GAMES.find(g => g.id === id) || GAMES[0];
+const toDeg = (g, s) => g.toDeg ? g.toDeg(s) : s * g.yaw;
+const fromDeg = (g, d) => g.fromDeg ? g.fromDeg(d) : d / g.yaw;
+function fmtGame(g, d){
+  const v = fromDeg(g, d);
+  if (g.min != null && v < g.min) return `${g.min.toFixed(g.dec)}（已達下限）`;
+  if (g.max != null && v > g.max) return `${g.max.toFixed(g.dec)}（已達上限）`;
+  return v.toFixed(g.dec);
+}
+$('game').innerHTML = GAMES.map(g => `<option value="${g.id}">${g.name}</option>`).join('');
+if (saved && saved.game) $('game').value = saved.game;
+
+function cfg(){
+  const dpi = Math.max(100, +$('dpi').value || 800);
+  const g = gameById($('game').value);
+  const userSens = +$('sens').value;
+  const deg = userSens > 0 ? toDeg(g, userSens) : 1000 / dpi * YAW;
+  const sens = Math.round(deg / YAW * 10000) / 10000; // CS2 等效靈敏度，驅動視角
+  return { dpi, sens, g, derived: !(userSens > 0) };
+}
+const cm360 = (dpi, s) => 2.54 * 360 / (dpi * s * YAW);
+function refreshReadout(){
+  const c = cfg();
+  $('rEdpi').textContent = Math.round(c.dpi * c.sens);
+  $('rCm').textContent = cm360(c.dpi, c.sens).toFixed(1);
+  $('rDeg').textContent = (c.sens * YAW).toFixed(4);
+  $('sensLabel').textContent = `${c.g.name} 目前靈敏度（選填）`;
+  $('sensHint').textContent = c.derived
+    ? `未填寫：以 cm/360 ≈ 41.6（CS2 eDPI 1000）起測，相當於 ${c.g.name} ${fmtGame(c.g, c.sens * YAW)}。`
+    : c.g.id === 'cs2' ? `測試會以靈敏度 ${c.sens} 換算視角。`
+    : `換算為 CS2 等效靈敏度 ${c.sens.toFixed(3)} 進行測試。`;
+  store.set('senslab.cfg', { dpi: c.dpi, sens: $('sens').value, game: c.g.id });
+}
+['dpi','sens'].forEach(id => $(id).addEventListener('input', refreshReadout));
+$('game').addEventListener('change', () => {
+  const prev = gameById(store.get('senslab.cfg', {}).game || 'cs2'), v = +$('sens').value;
+  if (v > 0) $('sens').value = fromDeg(gameById($('game').value), toDeg(prev, v)).toFixed(gameById($('game').value).dec);
+  refreshReadout();
+});
+refreshReadout();
+
+/* ---------- 3D 投影 ---------- */
+const cam = { yaw: 0, pitch: 0 };
+let W = 0, H = 0, DPR = 1, focal = 1;
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = r.width; H = r.height;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  focal = (H / 2) / Math.tan(VFOV / 2 * D2R);
+  const hfov = 2 * Math.atan((W / 2) / focal) / D2R;
+  $('stageInfo').textContent = `水平視野 ${hfov.toFixed(1)}° · 與 CS2 相同角度比例`;
+}
+new ResizeObserver(resize).observe(stage);
+
+const dirVec = (y, p) => { const cp = Math.cos(p*D2R); return [cp*Math.sin(y*D2R), Math.sin(p*D2R), cp*Math.cos(y*D2R)]; };
+const dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+function angBetween(y1, p1, y2, p2){
+  let d = dot(dirVec(y1,p1), dirVec(y2,p2));
+  return Math.acos(Math.max(-1, Math.min(1, d))) / D2R;
+}
+function project(yaw, pitch){
+  const d = dirVec(yaw, pitch), y = cam.yaw*D2R, p = cam.pitch*D2R;
+  const f = [Math.cos(p)*Math.sin(y), Math.sin(p), Math.cos(p)*Math.cos(y)];
+  const r = [Math.cos(y), 0, -Math.sin(y)];
+  const u = [-Math.sin(p)*Math.sin(y), Math.cos(p), -Math.sin(p)*Math.cos(y)];
+  const z = dot(d, f); if (z <= 0.05) return null;
+  return { x: W/2 + dot(d, r)/z*focal, y: H/2 - dot(d, u)/z*focal, z };
+}
+
+/* ---------- 滑鼠鎖定 ---------- */
+let locked = false, rawMode = null, sens = 1, pendingStart = null;
+function setChip(){
+  const chip = $('rawChip');
+  chip.className = 'status-chip' + (rawMode === 'raw' ? ' ok' : rawMode === 'os' ? ' warn' : '');
+  chip.lastElementChild.textContent = rawMode === 'raw' ? '原始輸入模式（未經系統加速）'
+    : rawMode === 'os' ? '系統游標模式：請關閉指標加速' : '尚未鎖定滑鼠';
+}
+async function lock(){
+  try {
+    const p = cv.requestPointerLock({ unadjustedMovement: true });
+    if (p && p.then) await p;
+    rawMode = 'raw';
+  } catch (e) {
+    try { const p2 = cv.requestPointerLock(); if (p2 && p2.then) await p2; rawMode = 'os'; }
+    catch (e2) { showOverlay('無法鎖定滑鼠', '這個瀏覽器或檢視模式不支援滑鼠鎖定。請改用桌機版 Chrome 或 Edge 直接開啟此頁。'); return false; }
+  }
+  setChip(); return true;
+}
+document.addEventListener('pointerlockchange', () => {
+  locked = document.pointerLockElement === cv;
+  if (!locked && cal){ cal = null; setButtons(false); showOverlay('已取消測量', '按 3 或左側「測量」重新測量滑鼠墊範圍。'); }
+  if (!locked && test) pauseTest();
+  if (locked && pendingStart){ const f = pendingStart; pendingStart = null; f(); }
+});
+document.addEventListener('mousemove', e => {
+  if (!locked) return;
+  const mx = e.movementX, my = e.movementY;
+  if (Math.abs(mx) > 20000 || Math.abs(my) > 20000) return;
+  if (cal){ cal.x += mx; return; }
+  handX += mx;
+  cam.yaw += mx * sens * YAW;
+  cam.pitch = Math.max(-89, Math.min(89, cam.pitch - my * sens * YAW));
+});
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('mousedown', e => {
+  if (locked && cal){ if (e.button === 0) calAdvance(); return; }
+  if (locked && test && test.kind === 'flick' && test.recenter){ doRecenter(); return; }
+  if (e.button !== 0) return;
+  if (!locked && test && test.paused){ lock().then(ok => { if (ok) resumeTest(); }); return; }
+  if (locked && test && test.kind === 'flick') flickClick();
+});
+
+function showOverlay(t, p){
+  ovTitle.textContent = t; ovText.textContent = p; ov.hidden = false;
+  const paused = !!(test && test.paused);
+  $('ovFlick').hidden = paused; $('ovTrack').hidden = paused; $('ovPad').hidden = paused; $('ovResume').hidden = !paused;
+}
+
+/* ---------- 滑鼠墊範圍測量 ---------- */
+async function startCal(then){
+  cal = { step: 0, x: 0, L: 0, dpi: cfg().dpi, then };
+  const begin = () => { hideOverlay(); setButtons(true); };
+  if (locked) begin(); else { pendingStart = begin; const ok = await lock(); if (!ok){ pendingStart = null; cal = null; } }
+}
+function calAdvance(){
+  if (cal.step === 0){ cal.x = 0; cal.step = 1; }
+  else if (cal.step === 1){ cal.L = Math.max(0, -cal.x); cal.step = 2; }
+  else finishCal();
+}
+function finishCal(){
+  const k = 2.54 / cal.dpi, L = cal.L * k, R = Math.max(0, cal.x) * k, then = cal.then;
+  cal = null; setButtons(false);
+  if (L < 2 || R < 2){
+    if (document.pointerLockElement) document.exitPointerLock();
+    showOverlay('範圍太小', `量到左 ${L.toFixed(1)} cm、右 ${R.toFixed(1)} cm。請確認 DPI 填對，測量時滑鼠不要拿起來，再按 3 重測。`);
+    return;
+  }
+  pad = { L, R }; store.set('senslab.pad', pad); renderPad();
+  if (then) startTest(then);
+  else {
+    if (document.pointerLockElement) document.exitPointerLock();
+    showOverlay('滑鼠墊範圍已儲存', `左 ${L.toFixed(1)} cm、右 ${R.toFixed(1)} cm。甩槍測試會依你手的位置安排目標方向，避免撞到鍵盤。`);
+  }
+}
+function doRecenter(){
+  handX = 0; test.recenter = false; test.justCentered = true; test.nextAt = performance.now() + 350;
+}
+$('btnPad').addEventListener('click', () => startCal(null));
+$('ovPad').addEventListener('click', e => { e.stopPropagation(); startCal(null); });
+function resumeFromOverlay(){ if (test && test.paused) lock().then(ok => { if (ok) resumeTest(); }); }
+$('ovFlick').addEventListener('click', e => { e.stopPropagation(); startTest('flick'); });
+$('ovTrack').addEventListener('click', e => { e.stopPropagation(); startTest('track'); });
+$('ovResume').addEventListener('click', e => { e.stopPropagation(); resumeFromOverlay(); });
+ov.addEventListener('mousedown', e => { if (e.target === ov || e.target.closest('.overlay > div') && !e.target.closest('button')) resumeFromOverlay(); });
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input, select')) return;
+  if (cal && locked && (e.code === 'Space' || e.code === 'Enter')){ e.preventDefault(); calAdvance(); return; }
+  if (test && test.recenter && locked && !test.paused && (e.code === 'Space' || e.code === 'Enter')){ e.preventDefault(); doRecenter(); return; }
+  if (cal) return;
+  if (!test && e.key === '3'){ e.preventDefault(); startCal(null); return; }
+  if (test && test.paused && (e.code === 'Space' || e.code === 'Enter')){ e.preventDefault(); resumeFromOverlay(); return; }
+  if (test) return;
+  if (e.key === '1'){ e.preventDefault(); startTest('flick'); }
+  else if (e.key === '2'){ e.preventDefault(); startTest('track'); }
+});
+function hideOverlay(){ ov.hidden = true; }
+function setButtons(dis){ $('btnPad').disabled = dis; $('btnFlick').disabled = dis; $('btnTrack').disabled = dis; $('dpi').disabled = dis; $('sens').disabled = dis; $('game').disabled = dis; }
+
+$('btnFs').addEventListener('click', async () => {
+  try { if (document.fullscreenElement) await document.exitFullscreen(); else await stage.requestFullscreen(); }
+  catch (e) { $('btnFs').textContent = '此檢視不支援全螢幕'; $('btnFs').disabled = true; }
+});
+
+/* ---------- 測試狀態 ---------- */
+let test = null;
+function ensureRound(c){
+  if (!round || round.sens !== c.sens || round.dpi !== c.dpi){
+    round = { id: history.length + 1, sens: c.sens, dpi: c.dpi, flick: null, track: null, rec: null };
+  }
+}
+async function startTest(kind){
+  if (kind === 'flick' && !pad){ startCal('flick'); return; }
+  const c = cfg(); sens = c.sens; ensureRound(c);
+  cam.yaw = 0; cam.pitch = 0;
+  const begin = () => {
+    hideOverlay(); setButtons(true);
+    if (kind === 'flick'){
+      test = { kind, trials: [], cur: null, nextAt: performance.now() + 700, paused: false, plan: makePlan(), dpi: c.dpi, recenter: true, padLimited: false };
+    } else {
+      test = { kind, samples: [], t0: performance.now() + 1200, tg: { yaw: 0, pitch: 0, v: 0, flipAt: 0, ph: Math.random()*6 }, paused: false };
+      test.tg.v = (Math.random() < .5 ? -1 : 1) * rand(20, 45);
+    }
+  };
+  if (locked) begin(); else { pendingStart = begin; const ok = await lock(); if (!ok) pendingStart = null; }
+}
+$('btnFlick').addEventListener('click', () => startTest('flick'));
+$('btnTrack').addEventListener('click', () => startTest('track'));
+
+function pauseTest(){
+  if (!test) return;
+  if (test.kind === 'track'){
+    test = null; setButtons(false);
+    showOverlay('追蹤測試已中斷', '追蹤需要連續 20 秒的資料，請重新按「追蹤測試」開始。');
+    return;
+  }
+  test.paused = true; test.cur = null;
+  showOverlay('已暫停', `已完成 ${test.trials.length} / ${FLICK_N} 個目標。點擊畫面或按空白鍵繼續。`);
+}
+function resumeTest(){
+  if (!test) return;
+  test.paused = false; test.nextAt = performance.now() + 500; test.recenter = true; hideOverlay();
+}
+const rand = (a, b) => a + Math.random() * (b - a);
+
+/* ---------- 甩槍 ---------- */
+function onScreen(ty, tp, margin){
+  const q = project(ty, tp);
+  return q && q.x > W * margin && q.x < W * (1 - margin) && q.y > H * margin && q.y < H * (1 - margin);
+}
+function padRoom(ty){
+  if (!pad || !test.dpi) return true;
+  const k = 2.54 / (test.dpi * sens * YAW);           // 每轉 1° 手要移動的公分
+  const after = handX / test.dpi * 2.54 + (ty - cam.yaw) * k * 1.15; // 預留 15% 甩過頭空間
+  return after >= -pad.L * 0.92 && after <= pad.R * 0.92;
+}
+function spawnFlick(now){
+  const halfH = Math.atan((W / 2) / focal) / D2R;
+  const maxD = Math.max(14, Math.min(55, halfH * 0.85));
+  const idx = test.trials.length;
+  let ty, tp, ok = false;
+  for (let k = 0; k < 60 && !ok; k++){
+    const bi = test.plan[idx] ?? Math.floor(Math.random() * 3);
+    const lo = [8, 18, 30][bi], hi = Math.max(lo + 2, Math.min([18, 30, 55][bi], maxD));
+    const d = Math.exp(rand(Math.log(lo), Math.log(hi)));
+    const th = Math.random() * Math.PI * 2;
+    ty = cam.yaw + d * Math.cos(th);
+    tp = Math.max(-28, Math.min(28, cam.pitch + d * Math.sin(th) * 0.45));
+    for (const cand of [ty, 2 * cam.yaw - ty]){            // 原方向沒空間就換另一邊
+      if (onScreen(cand, tp, 0.07) && padRoom(cand)){ ty = cand; ok = true; break; }
+    }
+  }
+  if (!ok){
+    if (test.justCentered && (test.plan[idx] ?? 0) > 0){ test.plan[idx]--; test.padLimited = true; } // 手在中間仍放不下：降一級距離
+    else test.recenter = true;
+    return;
+  }
+  test.justCentered = false;
+  test.cur = { spawn: now, sy: cam.yaw, sp: cam.pitch, ty, tp, dist: angBetween(cam.yaw, cam.pitch, ty, tp), samples: [[now, cam.yaw, cam.pitch]] };
+}
+function flickClick(){
+  const c = test.cur; if (!c) return;
+  const now = performance.now();
+  c.samples.push([now, cam.yaw, cam.pitch]);
+  c.clickT = now;
+  c.err = angBetween(cam.yaw, cam.pitch, c.ty, c.tp);
+  c.hit = c.err <= TARGET_R;
+  test.trials.push(c); test.cur = null;
+  test.flash = { t: now, hit: c.hit, ty: c.ty, tp: c.tp };
+  if (test.trials.length >= FLICK_N) finishFlick();
+  else test.nextAt = now + 380;
+}
+function analyzeTrial(tr){
+  const s = tr.samples; if (s.length < 6) return null;
+  const c = Math.cos(tr.sp * D2R);
+  const pts = s.map(([t, y, p]) => [t, (y - tr.sy) * c, p - tr.sp]);
+  const T = [(tr.ty - tr.sy) * c, tr.tp - tr.sp], TL = Math.hypot(T[0], T[1]);
+  const Tu = [T[0]/TL, T[1]/TL];
+  const raw = pts.map((q, i) => i ? Math.hypot(q[1]-pts[i-1][1], q[2]-pts[i-1][2]) / Math.max(1, q[0]-pts[i-1][0]) * 1000 : 0);
+  const v = raw.map((x, i) => (raw[Math.max(0,i-1)] + x + raw[Math.min(raw.length-1,i+1)]) / 3);
+  let pk = 0; v.forEach((x, i) => { if (x > v[pk]) pk = i; });
+  if (v[pk] < 25) return null;
+  let on = 0; while (on < pk && v[on] < v[pk] * .1) on++;
+  let end = v.length - 1;
+  for (let i = pk + 1; i < v.length; i++){
+    if (v[i] < v[pk] * .12){ end = i; break; }
+    if (v[i] < v[pk] * .5 && i + 1 < v.length && v[i+1] > v[i] * 1.2){ end = i; break; }
+  }
+  const e = pts[end];
+  const ratio = (e[1]*Tu[0] + e[2]*Tu[1]) / TL;
+  // 修正段：沿目標方向的進度，計算反向次數（來回晃）與補了幾下
+  const prog = pts.map(q => q[1]*Tu[0] + q[2]*Tu[1]);
+  const hyst = Math.max(0.25, TARGET_R * 0.2);
+  let rev = 0, dir = 0, ext = prog[end];
+  for (let i = end + 1; i < prog.length; i++){
+    const p = prog[i];
+    if (dir === 0){ if (Math.abs(p - ext) > hyst){ dir = Math.sign(p - ext); ext = p; } }
+    else if ((p - ext) * dir > 0) ext = p;
+    else if (Math.abs(p - ext) > hyst){ rev++; dir = -dir; ext = p; }
+  }
+  const thr = Math.max(12, v[pk] * 0.06);
+  let subs = 0, up = false;
+  for (let i = end + 1; i < v.length; i++){
+    if (!up && v[i] > thr){ subs++; up = true; }
+    else if (up && v[i] < thr * 0.5) up = false;
+  }
+  return { ratio, dist: tr.dist, hit: tr.hit, rev, subs, react: pts[on][0] - tr.spawn, primaryT: pts[end][0] - pts[on][0], correct: tr.clickT - pts[end][0], total: tr.clickT - tr.spawn, peak: v[pk] };
+}
+const median = a => { const s = [...a].sort((x,y)=>x-y), m = s.length >> 1; return s.length ? (s.length % 2 ? s[m] : (s[m-1]+s[m])/2) : NaN; };
+const quant = (a, q) => { const s = [...a].sort((x,y)=>x-y); const i = (s.length-1)*q, lo = Math.floor(i); return s[lo] + (s[Math.ceil(i)] - s[lo]) * (i - lo); };
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+
+function finishFlick(){
+  const rows = test.trials.slice(WARMUP).map(analyzeTrial).filter(r => r && r.ratio > .3 && r.ratio < 2.2);
+  const padLimited = test.padLimited;
+  test = null; setButtons(false);
+  if (document.pointerLockElement) document.exitPointerLock();
+  if (rows.length < 12){
+    showOverlay('有效資料不足', '多數甩槍無法辨識出完整的移動，請以正常速度直接甩向目標再試一次。');
+    return;
+  }
+  const r = rows.map(x => x.ratio), med = median(r);
+  const bins = DBINS.map(b => {
+    const rs = rows.filter(x => x.dist >= b.a && x.dist < b.b);
+    return { ...b, n: rs.length, med: rs.length ? median(rs.map(x => x.ratio)) : NaN,
+      corr: rs.length ? median(rs.map(x => x.correct)) : NaN,
+      osc: rs.length ? rs.filter(x => x.rev >= 1).length / rs.length : NaN };
+  });
+  const valid = bins.filter(b => b.n >= 3);
+  const balMed = valid.length >= 2 ? median(valid.map(b => b.med)) : med; // 各距離等權，避免偏向某一種距離
+  const osc = rows.filter(x => x.rev >= 1).length / rows.length;
+  const creep = rows.filter(x => x.rev === 0 && x.subs >= 2).length / rows.length;
+  const primF = clamp(0.93 / balMed, .75, 1.3);
+  const corrF = clamp(1 - 0.25 * (osc - 0.2) + 0.2 * (creep - 0.2), .9, 1.1);
+  const near = bins[0], far = bins[2];
+  let distHint = '';
+  if (near.n >= 3 && far.n >= 3){
+    const gap = far.med - near.med;
+    if (gap < -0.12) distHint = `遠距離落點（${far.med.toFixed(2)}）明顯比近距離（${near.med.toFixed(2)}）短：大角度常甩不到位。通常是遠距離只用手腕、手臂沒出力，先試著用手臂帶動，再考慮調高靈敏度。`;
+    else if (gap > 0.12) distHint = `遠距離落點（${far.med.toFixed(2)}）明顯比近距離（${near.med.toFixed(2)}）長：大角度容易甩過頭，小角度則偏保守。後面的建議值已按各距離等權計算。`;
+  }
+  const f = {
+    rows, med, balMed, q1: quant(r, .25), q3: quant(r, .75), bins, distHint,
+    over: rows.filter(x => x.ratio > 1.02).length / rows.length,
+    hit: rows.filter(x => x.hit).length / rows.length,
+    total: median(rows.map(x => x.total)), correct: median(rows.map(x => x.correct)),
+    osc, creep, primF, corrF, padLimited,
+    factor: clamp(Math.exp(0.7 * Math.log(primF) + 0.3 * Math.log(corrF)), .75, 1.3)
+  };
+  round.flick = f;
+  showOverlay('甩槍測試完成', '接著按 2 做追蹤測試，建議值會更準。結果在畫面下方，按 Esc 離開全螢幕查看。');
+  renderAll();
+}
+
+/* ---------- 追蹤 ---------- */
+function stepTrack(now, dt){
+  const g = test.tg;
+  if (now < test.t0){ g.yaw = cam.yaw; g.pitch = cam.pitch; g.baseP = cam.pitch; g.baseY = cam.yaw; g.flipAt = test.t0 + rand(350, 1000); return; }
+  if (now >= g.flipAt){
+    g.v = -Math.sign(g.v) * rand(18, 50);
+    g.flipAt = now + rand(350, 1100);
+  }
+  const lim = Math.min(40, Math.atan((W / 2) / focal) / D2R * 0.7);
+  if (g.yaw - g.baseY > lim && g.v > 0) g.v = -g.v;
+  if (g.yaw - g.baseY < -lim && g.v < 0) g.v = -g.v;
+  g.yaw += g.v * dt / 1000;
+  g.pitch = g.baseP + 3 * Math.sin((now - test.t0) / 1000 * 2.1 + g.ph);
+  test.samples.push([now, cam.yaw, cam.pitch, g.yaw, g.pitch]);
+  if (now - test.t0 >= TRACK_MS) finishTrack();
+}
+function finishTrack(){
+  const s = test.samples, t0 = test.t0;
+  test = null; setButtons(false);
+  if (document.pointerLockElement) document.exitPointerLock();
+  const step = 10, start = t0 + 1000, end = s[s.length-1][0];
+  const G = []; let j = 0;
+  for (let t = start; t <= end; t += step){
+    while (j < s.length - 2 && s[j+1][0] < t) j++;
+    const a = s[j], b = s[j+1], k = clamp((t - a[0]) / Math.max(1, b[0]-a[0]), 0, 1);
+    G.push([t, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k, a[3]+(b[3]-a[3])*k, a[4]+(b[4]-a[4])*k]);
+  }
+  if (G.length < 300){ showOverlay('資料不足', '追蹤時間太短，請重新測試。'); return; }
+  const vel = idx => G.map((_, i) => (i < 2 || i > G.length-3) ? 0 : (G[i+2][idx] - G[i-2][idx]) / (4*step/1000));
+  const vc = vel(1), vt = vel(3);
+  let best = { L: 0, c: -2 };
+  for (let L = 0; L <= 35; L++){
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 2; i + L < G.length - 2; i++){ sxy += vc[i+L]*vt[i]; sxx += vc[i+L]**2; syy += vt[i]**2; }
+    const c = sxy / Math.sqrt(sxx*syy || 1);
+    if (c > best.c) best = { L, c };
+  }
+  let sxy = 0, syy = 0, n = 0;
+  for (let i = 2; i + best.L < G.length - 2; i++){ sxy += vc[i+best.L]*vt[i]; syy += vt[i]**2; n++; }
+  const gain = sxy / syy;
+  let res = 0, tv = 0;
+  for (let i = 2; i + best.L < G.length - 2; i++){ res += (vc[i+best.L] - gain*vt[i])**2; tv += vt[i]**2; }
+  const jitter = Math.sqrt(res / tv);
+  const errs = G.map(g => [g[0] - start, angBetween(g[1], g[2], g[3], g[4])]);
+  const onT = errs.filter(e => e[1] <= TRACK_R).length / errs.length;
+  let factor = clamp(1 / gain, .85, 1.15);
+  if (jitter > .55) factor *= .96;
+  if (best.L * step > 180 && gain < .95) factor *= 1.03;
+  round.track = { gain, jitter, lag: best.L * step, onT, meanErr: errs.reduce((a,e)=>a+e[1],0)/errs.length, errs, factor: clamp(factor, .8, 1.2) };
+  showOverlay('追蹤測試完成', '結果在畫面下方，按 Esc 離開全螢幕查看。套用建議值後可以再測一輪確認。');
+  renderAll();
+}
+
+/* ---------- 建議值 ---------- */
+function computeRec(r){
+  const parts = [];
+  if (r.flick) parts.push([r.flick.factor, .6]);
+  if (r.track) parts.push([r.track.factor, .4]);
+  if (!parts.length) return null;
+  const w = parts.reduce((a,p)=>a+p[1],0);
+  const f = clamp(Math.exp(parts.reduce((a,p)=>a + Math.log(p[0])*p[1], 0) / w), .7, 1.3);
+  return { f, deg: r.sens * f * YAW, sens: Math.round(r.sens * f * 100) / 100 };
+}
+
+/* ---------- 繪製結果 ---------- */
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function renderAll(){
+  if (!round) return;
+  round.rec = computeRec(round);
+  const idx = history.findIndex(h => h.id === round.id);
+  const slim = { id: round.id, sens: round.sens, dpi: round.dpi,
+    flickMed: round.flick ? round.flick.med : null, hit: round.flick ? round.flick.hit : null,
+    gain: round.track ? round.track.gain : null, onT: round.track ? round.track.onT : null,
+    rec: round.rec ? round.rec.sens : null };
+  if (idx >= 0) history[idx] = slim; else history.push(slim);
+  store.set('senslab.hist', history.slice(-30));
+  renderVerdict(); renderFlick(); renderTrack(); renderHist();
+}
+function renderVerdict(){
+  const r = round, rec = r.rec; if (!rec) return;
+  const pct = (rec.f - 1) * 100;
+  const cls = Math.abs(pct) < 3 ? 'flat' : pct > 0 ? 'up' : 'down';
+  const msg = cls === 'flat' ? '目前的靈敏度和你的手感相當吻合，維持即可。'
+    : cls === 'up' ? '你的移動常常停在目標前或跟不上，建議調高。'
+    : '你的移動容易過頭或抖動，建議調低。';
+  const basis = [r.flick ? '甩槍' : null, r.track ? '追蹤' : null].filter(Boolean).join(' + ');
+  const g = gameById($('game').value), curDeg = r.sens * YAW;
+  const rows = GAMES.map(x => `<tr${x.id === g.id ? ' class="sel"' : ''}><td>${x.name}${x.approx ? ' *' : ''}</td><td>${fmtGame(x, curDeg)}</td><td>${fmtGame(x, rec.deg)}</td></tr>`).join('');
+  $('verdict').innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+      <span class="big">${fmtGame(g, rec.deg)}</span>
+      <span class="delta ${cls}">${g.name} · ${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% · 原 ${fmtGame(g, curDeg)}</span>
+    </div>
+    <p>${msg}</p>
+    <dl class="kv">
+      <dt>cm/360°</dt><dd>${cm360(r.dpi, rec.deg / YAW).toFixed(1)}</dd>
+      <dt>CS2 eDPI</dt><dd>${Math.round(rec.deg / YAW * r.dpi)}</dd>
+      <dt>依據</dt><dd>${basis}</dd>
+    </dl>
+    <div class="table-wrap"><table class="gtable">
+      <thead><tr><th>各遊戲</th><th>目前等效</th><th>建議值</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="hint">以腰射 360° 距離相同換算，開鏡倍率請維持各遊戲預設（WARDOGS ADS 倍率 1.00）。* WARDOGS 仍在搶先體驗，換算採第三方轉換站公布的線性對應，改版後可能變動，進遊戲後請在練習場確認。</p>
+    <div class="cmd"><code id="cmdText">sensitivity "${fmtGame(GAMES[0], rec.deg)}"</code><button type="button" id="btnCopy">複製</button></div>
+    <p class="hint" style="margin-top:-6px">CS2 主控台指令</p>
+    <button type="button" id="btnApply" class="primary">套用建議值並再測一輪<span class="tag">${fmtGame(g, rec.deg)}</span></button>`;
+  $('btnCopy').onclick = () => {
+    const t = $('cmdText').textContent, b = $('btnCopy');
+    const sel = () => { const rg = document.createRange(); rg.selectNodeContents($('cmdText')); const s = getSelection(); s.removeAllRanges(); s.addRange(rg); b.textContent = '已選取'; };
+    try { navigator.clipboard.writeText(t).then(() => b.textContent = '已複製', sel); } catch (e) { sel(); }
+  };
+  $('btnApply').onclick = () => {
+    $('sens').value = clamp(fromDeg(g, rec.deg), g.min ?? 0.001, g.max ?? 100).toFixed(g.dec); refreshReadout();
+    showOverlay(`已套用 ${g.name} ${$('sens').value}`, '再做一次甩槍與追蹤測試。若建議值變動小於 3%，就可以定案。');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+}
+function svgEl(w, h, inner){ return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img">${inner}</svg>`; }
+function renderFlick(){
+  const f = round.flick; if (!f) { $('flickOut').innerHTML = '<p class="empty">這一輪尚未做甩槍測試。</p>'; return; }
+  const w = 320, h = 190, L = 34, R = 8, T = 10, B = 26;
+  const x = d => L + (d - 5) / (70 - 5) * (w - L - R);
+  const y = r => T + (1 - (r - .4) / (1.6 - .4)) * (h - T - B);
+  let g = `<rect class="band" x="${L}" y="${y(.98)}" width="${w-L-R}" height="${y(.88)-y(.98)}"/>`;
+  [.4,.7,1,1.3,1.6].forEach(v => g += `<line class="grid" x1="${L}" x2="${w-R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end">${v.toFixed(1)}</text>`);
+  [10,20,30,40,50,60,70].forEach(v => g += `<text x="${x(v)}" y="${h-10}" text-anchor="middle">${v}°</text>`);
+  g += `<line class="ref" x1="${L}" x2="${w-R}" y1="${y(1)}" y2="${y(1)}"/>`;
+  [18, 30].forEach(v => g += `<line class="ref" x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${h-B}"/>`);
+  f.rows.forEach(r => g += `<circle class="${r.hit?'hit':'miss'}" cx="${x(clamp(r.dist,5,70))}" cy="${y(clamp(r.ratio,.4,1.6))}" r="3.5"/>`);
+  const cell = (b, fn) => b.n ? fn(b) : '–';
+  const btab = `<div class="table-wrap"><table class="gtable"><thead><tr><th>距離</th><th>次數</th><th>落點</th><th>修正</th><th>來回晃</th></tr></thead><tbody>${f.bins.map(b => `<tr><td>${b.name} ${b.label}</td><td>${b.n}</td><td>${cell(b, b => b.med.toFixed(2))}</td><td>${cell(b, b => Math.round(b.corr) + ' ms')}</td><td>${cell(b, b => Math.round(b.osc * 100) + '%')}</td></tr>`).join('')}</tbody></table></div>`;
+  $('flickOut').innerHTML = svgEl(w, h, g) + btab + (f.distHint ? `<p class="hint">${f.distHint}</p>` : '') + (f.padLimited ? `<p class="hint">部分遠距離目標因滑鼠墊空間不足改為較近的距離。若實戰常需要拿起滑鼠，可考慮稍微調高靈敏度或換更大的滑鼠墊。</p>` : '') + `
+    <dl class="kv">
+      <dt>落點（各距離等權）</dt><dd>${f.balMed.toFixed(2)}</dd>
+      <dt>甩過頭比例</dt><dd>${Math.round(f.over*100)}%</dd>
+      <dt>首發命中率</dt><dd>${Math.round(f.hit*100)}%</dd>
+      <dt>修正時間中位數</dt><dd>${Math.round(f.correct)} ms</dd>
+      <dt>修正時來回晃</dt><dd>${Math.round(f.osc*100)}%</dd>
+      <dt>修正時慢慢補</dt><dd>${Math.round(f.creep*100)}%</dd>
+      <dt>落點係數 · 修正係數</dt><dd>×${f.primF.toFixed(3)} · ×${f.corrF.toFixed(3)}</dd>
+      <dt>甩槍調整係數</dt><dd>×${f.factor.toFixed(3)}</dd>
+    </dl>`;
+}
+function renderTrack(){
+  const t = round.track; if (!t) { $('trackOut').innerHTML = '<p class="empty">這一輪尚未做追蹤測試。</p>'; return; }
+  const w = 320, h = 190, L = 34, R = 8, T = 10, B = 26;
+  const maxE = Math.max(6, Math.ceil(quant(t.errs.map(e=>e[1]), .98)));
+  const tmax = t.errs[t.errs.length-1][0];
+  const x = s => L + s / tmax * (w - L - R), y = e => T + (1 - Math.min(e, maxE) / maxE) * (h - T - B);
+  let g = '';
+  const ticks = [0, maxE/2, maxE].map(v => Math.round(v*10)/10);
+  ticks.forEach(v => g += `<line class="grid" x1="${L}" x2="${w-R}" y1="${y(v)}" y2="${y(v)}"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end">${v}°</text>`);
+  [0,5,10,15].forEach(s => { if (s*1000 <= tmax) g += `<text x="${x(s*1000)}" y="${h-10}" text-anchor="middle">${s}s</text>`; });
+  g += `<line class="thr" x1="${L}" x2="${w-R}" y1="${y(TRACK_R)}" y2="${y(TRACK_R)}"/>`;
+  let d = ''; t.errs.forEach((e, i) => { if (i % 3 === 0) d += (d ? 'L' : 'M') + x(e[0]).toFixed(1) + ' ' + y(e[1]).toFixed(1); });
+  g += `<path class="err" d="${d}"/>`;
+  $('trackOut').innerHTML = svgEl(w, h, g) + `
+    <dl class="kv">
+      <dt>貼靶率</dt><dd>${Math.round(t.onT*100)}%</dd>
+      <dt>平均誤差</dt><dd>${t.meanErr.toFixed(2)}°</dd>
+      <dt>速度增益</dt><dd>${t.gain.toFixed(2)}</dd>
+      <dt>抖動量</dt><dd>${t.jitter.toFixed(2)}</dd>
+      <dt>反應延遲</dt><dd>${t.lag} ms</dd>
+      <dt>追蹤調整係數</dt><dd>×${t.factor.toFixed(3)}</dd>
+    </dl>`;
+}
+function renderHist(){
+  if (!history.length) return;
+  const f2 = v => v == null ? '–' : v.toFixed(2), pc = v => v == null ? '–' : Math.round(v*100) + '%';
+  $('hist').innerHTML = history.slice().reverse().map(h => `<tr>
+    <td>#${h.id}</td><td>${esc(h.sens)}</td><td>${esc(h.dpi)}</td><td>${f2(h.flickMed)}</td><td>${pc(h.hit)}</td>
+    <td>${f2(h.gain)}</td><td>${pc(h.onT)}</td><td style="color:var(--accent)">${f2(h.rec)}</td></tr>`).join('');
+}
+renderHist();
+
+/* ---------- 主迴圈 ---------- */
+let last = performance.now();
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = { accent: css('--accent'), good: css('--good'), bad: css('--bad'), fg: css('--fg'), muted: css('--muted') };
+const idleTargets = [[14, 4], [-22, -6], [31, 9], [-8, 12], [42, -3]];
+
+function frame(now){
+  const dt = Math.min(50, now - last); last = now;
+  if (test && !test.paused && locked){
+    if (test.kind === 'flick'){
+      if (!test.cur && !test.recenter && now >= test.nextAt) spawnFlick(now);
+      else if (test.cur) test.cur.samples.push([now, cam.yaw, cam.pitch]);
+    } else stepTrack(now, dt);
+  }
+  if (!test && !locked) cam.yaw += dt * 0.004;
+  draw(now);
+  requestAnimationFrame(frame);
+}
+function draw(now){
+  if (!W) return;
+  ctx.fillStyle = '#0b0d11'; ctx.fillRect(0, 0, W, H);
+  // 地平面以下略亮
+  const hz = project(cam.yaw, 0);
+  if (hz){ ctx.fillStyle = '#10141a'; ctx.fillRect(0, hz.y, W, H - hz.y); }
+  // 角度格點：每 10°，30° 處較大
+  const y0 = Math.floor((cam.yaw - 80) / 10) * 10;
+  for (let yy = y0; yy <= cam.yaw + 80; yy += 10){
+    for (let pp = -60; pp <= 60; pp += 10){
+      const q = project(yy, pp); if (!q) continue;
+      const major = (Math.round(yy) % 30 === 0) && (pp % 30 === 0);
+      ctx.fillStyle = major ? '#3a4452' : '#232a33';
+      ctx.fillRect(q.x - (major?2:1), q.y - (major?2:1), major?4:2, major?4:2);
+    }
+  }
+  ctx.strokeStyle = '#2b323d'; ctx.lineWidth = 1; ctx.beginPath();
+  let started = false;
+  for (let yy = cam.yaw - 70; yy <= cam.yaw + 70; yy += 2){
+    const q = project(yy, 0); if (!q) continue;
+    started ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); started = true;
+  }
+  ctx.stroke();
+
+  const drawTarget = (ty, tp, rDeg, color, ring) => {
+    const q = project(ty, tp); if (!q) return;
+    const r = Math.max(3, focal * Math.tan(rDeg * D2R) / q.z);
+    ctx.beginPath(); ctx.arc(q.x, q.y, r, 0, Math.PI*2);
+    ctx.fillStyle = color; ctx.fill();
+    if (ring){ ctx.lineWidth = 2; ctx.strokeStyle = '#0b0d11'; ctx.beginPath(); ctx.arc(q.x, q.y, r*.55, 0, Math.PI*2); ctx.stroke(); }
+  };
+
+  const edgeArrow = (ty, tp, color) => {
+    if (onScreen(ty, tp, 0)) return;
+    let dy = ty - cam.yaw; dy = ((dy + 540) % 360) - 180;
+    const ang = Math.atan2(-(tp - cam.pitch), dy);
+    const m = 26, ex = W/2 + Math.cos(ang) * (W/2 - m), ey = H/2 + Math.sin(ang) * (H/2 - m);
+    const x = clamp(ex, m, W - m), y = clamp(ey, m, H - m);
+    ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+    ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-8, -10); ctx.lineTo(-8, 10); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  };
+
+  if (!test){
+    idleTargets.forEach(([y, p]) => drawTarget(y, p, TARGET_R, 'rgba(240,162,59,.35)', true));
+  } else if (test.kind === 'flick'){
+    if (test.cur){ drawTarget(test.cur.ty, test.cur.tp, TARGET_R, C.accent, true); edgeArrow(test.cur.ty, test.cur.tp, C.accent); }
+    if (test.flash && now - test.flash.t < 300){
+      const a = 1 - (now - test.flash.t) / 300;
+      ctx.globalAlpha = a;
+      drawTarget(test.flash.ty, test.flash.tp, TARGET_R * 1.4, test.flash.hit ? C.good : C.bad, false);
+      ctx.globalAlpha = 1;
+    }
+  } else {
+    const g = test.tg;
+    const on = angBetween(cam.yaw, cam.pitch, g.yaw, g.pitch) <= TRACK_R;
+    drawTarget(g.yaw, g.pitch, TRACK_R, now < test.t0 ? 'rgba(240,162,59,.5)' : on ? C.good : C.accent, true);
+    edgeArrow(g.yaw, g.pitch, C.accent);
+  }
+
+  // 準星
+  const cx = W/2, cy = H/2;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx-10, cy); ctx.lineTo(cx-3, cy); ctx.moveTo(cx+3, cy); ctx.lineTo(cx+10, cy);
+  ctx.moveTo(cx, cy-10); ctx.lineTo(cx, cy-3); ctx.moveTo(cx, cy+3); ctx.lineTo(cx, cy+10);
+  ctx.stroke();
+
+  // 滑鼠墊位置條
+  const drawPadBar = (xcm, L, R) => {
+    const bw = Math.min(320, W * 0.5), bx = W/2 - bw/2, by = H - 28;
+    const span = Math.max(L + R, 1), px = c => bx + (c + L) / span * bw;
+    ctx.fillStyle = 'rgba(140,150,164,.25)'; ctx.fillRect(bx, by, bw, 6);
+    ctx.fillStyle = C.muted; ctx.fillRect(px(0) - 1, by - 5, 2, 16);
+    const warn = xcm < -L * 0.8 || xcm > R * 0.8;
+    ctx.fillStyle = warn ? C.bad : C.accent;
+    ctx.beginPath(); ctx.arc(clamp(px(xcm), bx, bx + bw), by + 3, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.font = '11px "JetBrains Mono", monospace'; ctx.fillStyle = C.muted; ctx.textBaseline = 'top';
+    ctx.textAlign = 'left'; ctx.fillText(`左 ${L.toFixed(0)}cm`, bx, by + 10);
+    ctx.textAlign = 'right'; ctx.fillText(`右 ${R.toFixed(0)}cm`, bx + bw, by + 10);
+    ctx.textAlign = 'left';
+  };
+  const centerText = (title, sub) => {
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = '600 20px "Chakra Petch", "Noto Sans TC", sans-serif'; ctx.fillStyle = C.fg;
+    ctx.fillText(title, W/2, H/2 - 60);
+    ctx.font = '14px "Noto Sans TC", sans-serif'; ctx.fillStyle = C.muted;
+    ctx.fillText(sub, W/2, H/2 - 32);
+    ctx.textAlign = 'left';
+  };
+  if (cal){
+    ctx.fillStyle = 'rgba(11,13,17,.82)'; ctx.fillRect(0, 0, W, H);
+    const xcm = cal.x / cal.dpi * 2.54;
+    if (cal.step === 0) centerText('滑鼠墊範圍 1/3：放在中間', '把滑鼠放在你平常瞄準時的中心位置，按左鍵或空白鍵');
+    else if (cal.step === 1) centerText(`2/3：往左滑到最遠（${Math.max(0, -xcm).toFixed(1)} cm）`, '滑到舒適極限或快碰到鍵盤時停下，按左鍵或空白鍵（不要拿起滑鼠）');
+    else centerText(`3/3：往右滑到最遠（${Math.max(0, xcm).toFixed(1)} cm）`, '一路滑到右邊的極限，按左鍵或空白鍵完成');
+    const Ls = cal.step === 2 ? cal.L / cal.dpi * 2.54 : 25;
+    drawPadBar(xcm, Ls, 25);
+  }
+  if (test && test.kind === 'flick'){
+    if (test.recenter && !test.paused) centerText(test.trials.length ? '快到滑鼠墊邊緣了' : '把滑鼠放在滑鼠墊中間', '拿起滑鼠放回中間，然後按右鍵或空白鍵');
+    if (pad) drawPadBar(handX / test.dpi * 2.54, pad.L, pad.R);
+  }
+
+  // HUD
+  ctx.font = '600 13px "JetBrains Mono", monospace'; ctx.fillStyle = C.muted; ctx.textBaseline = 'top';
+  const sTxt = `CS2 等效 ${(test ? sens : cfg().sens).toFixed(3)} · ${cfg().dpi} DPI`;
+  ctx.fillText(sTxt, 14, 12);
+  if (test){
+    ctx.textAlign = 'right'; ctx.fillStyle = C.fg;
+    if (test.kind === 'flick'){
+      const n = test.trials.length, hits = test.trials.slice(WARMUP).filter(t => t.hit).length;
+      ctx.fillText(n < WARMUP ? `熱身 ${n + 1}/${WARMUP}（不計分）` : `目標 ${Math.min(n - WARMUP + 1, FLICK_N - WARMUP)}/${FLICK_N - WARMUP} · 命中 ${hits}`, W - 14, 12);
+    } else {
+      const left = test.t0 - now;
+      ctx.fillText(left > 0 ? `準備 ${(left/1000).toFixed(1)}s` : `剩餘 ${Math.max(0, (TRACK_MS - (now - test.t0))/1000).toFixed(1)}s`, W - 14, 12);
+    }
+    ctx.textAlign = 'left';
+  }
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
